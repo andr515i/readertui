@@ -137,27 +137,32 @@ pub fn log_chapter_content(novel_title: &str, chapter_title: &str, raw: &str, co
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
+
+    fn temp_log_path(name: &str) -> PathBuf {
+        std::env::temp_dir().join(name)
+    }
 
     #[test]
     fn disabled_debug_init_does_not_create_log_file() {
-        let path = "/tmp/readertui-debug-disabled-test.log";
-        let _ = fs::remove_file(path);
+        let path = temp_log_path("readertui-debug-disabled-test.log");
+        let _ = fs::remove_file(&path);
 
-        init(false, path);
+        init(false, path.to_str().unwrap());
 
-        assert!(!Path::new(path).exists());
+        assert!(!path.exists());
     }
 
     #[test]
     fn enabled_debug_init_creates_log_file() {
-        let path = "/tmp/readertui-debug-enabled-test.log";
-        let _ = fs::remove_file(path);
+        let path = temp_log_path("readertui-debug-enabled-test.log");
+        let _ = fs::remove_file(&path);
 
-        init(true, path);
+        init(true, path.to_str().unwrap());
 
-        assert!(Path::new(path).exists());
-        let _ = fs::remove_file(path);
-        init(false, path);
+        assert!(path.exists());
+        let _ = fs::remove_file(&path);
+        init(false, path.to_str().unwrap());
     }
 }
 fn colour_tag_name(colour: Color) -> String {

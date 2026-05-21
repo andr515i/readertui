@@ -291,8 +291,9 @@ mod tests {
 
     #[test]
     fn bookmark_add_delete_and_deduplicate() {
+        let path = env::temp_dir().join("readertui-test-progress.json");
         let mut state = ProgressState {
-            path: PathBuf::from("/tmp/readertui-test-progress.json"),
+            path: path.clone(),
             data: ProgressFile::default(),
         };
 
@@ -310,6 +311,6 @@ mod tests {
             }]
         );
 
-        let _ = fs::remove_file("/tmp/readertui-test-progress.json");
+        let _ = fs::remove_file(path);
     }
 }
