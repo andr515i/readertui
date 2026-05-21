@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS novels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chapters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    novel_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    reading_now INTEGER DEFAULT NULL,
+    FOREIGN KEY(novel_id) REFERENCES novels(id)
+);

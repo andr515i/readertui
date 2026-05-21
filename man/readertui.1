@@ -1,0 +1,281 @@
+.Dd August 21, 2025
+.Dt NOVEL 1
+.Os
+.Sh NAME
+.Nm novel
+.Nd terminal reader for novels with an interactive TUI (novels, chapters, reading view)
+.Sh SYNOPSIS
+.Nm
+.Sh DESCRIPTION
+.Nm
+is a full-screen terminal application that lets you browse novels stored in a local
+SqLite
+database, pick chapters, and read them in a scrollable, colorized view. It uses
+Crossterm and Ratatui for the TUI and stores local progress so it can remember
+the chapter and scroll position you were reading last.
+.Pp
+The application has three modes:
+.Bl -tag -width "ChapterContent"
+.It Novels
+List all novels. Use
+.Sy j/k ,
+mousewheel,
+.Sy Home/End ,
+or
+.Sy PageUp/PageDown
+to move,
+.Sy Enter
+or
+.Sy l
+to select,
+.Sy q
+to quit.
+.It Chapters
+List chapters for the selected novel, with optional live search. Use
+.Sy /
+to start a search (type to filter by chapter
+.Em id
+or title; case-insensitive),
+.Sy Enter
+to apply,
+.Sy Esc
+to cancel,
+.Sy j/k ,
+mousewheel,
+.Sy gg/G ,
+or
+.Sy Home/End
+to move,
+.Sy Enter
+or
+.Sy l
+to read,
+.Sy h
+to go back to Novels,
+.Sy q
+to quit.
+.It ChapterContent
+Read the selected chapter. Use
+.Sy j/k
+to scroll by 3 lines,
+.Sy mousewheel
+to scroll by the configured mouse step,
+.Sy Space/PageDown
+and
+.Sy Backspace/PageUp
+to page,
+.Sy gg/Home
+for top,
+.Sy G/End
+for bottom,
+.Sy l
+or left click
+for next chapter,
+.Sy h
+or right click
+for previous chapter,
+.Sy m
+to bookmark the current position,
+.Sy B
+to open the bookmark popup,
+.Sy b
+back to Chapters,
+.Sy q
+to quit.
+.El
+.Sh KEYBINDINGS
+.Bl -tag -width 10n
+.It Sy Global
+.Sy q
+\- quit current view (from Novels/Chapters/Reading).
+.It Sy Novels view
+.Sy j/k
+move selection,
+.Sy mousewheel
+move selection,
+.Sy Home/End
+first/last novel,
+.Sy PageUp/PageDown
+page through novels,
+.Sy Enter Ns / Ns Sy l
+select novel.
+.It Sy Chapters view
+.Sy /
+start search input;
+type to filter (by chapter
+.Em id
+or substring of title, case-insensitive);
+.Sy Backspace
+delete one character;
+.Sy Enter
+apply filter and keep list;
+.Sy Esc
+cancel search, clear input, and restore the pre-search selection;
+.Sy j/k
+move;
+.Sy mousewheel
+move;
+.Sy gg/G
+or
+.Sy Home/End
+first/last chapter;
+.Sy Enter Ns / Ns Sy l
+open chapter;
+.Sy h
+back to Novels;
+.Sy q
+quit.
+.It Sy Reading view
+.Sy j/k
+scroll by 3 lines;
+.Sy mousewheel
+scroll by configured mouse step;
+.Sy d/Ctrl+D
+scroll down by the configured half-page step;
+.Sy u/Ctrl+U
+scroll up by the configured half-page step;
+.Sy Space/PageDown
+page down;
+.Sy Backspace/PageUp
+page up;
+.Sy gg/Home
+top;
+.Sy G/End
+bottom;
+.Sy l
+or left click
+next chapter (wraps to first when at end);
+.Sy h
+or right click
+previous chapter (wraps from first to last);
+.Sy m
+save bookmark at current chapter and scroll;
+.Sy B
+open bookmark popup
+.Pq Sy j/k
+move,
+.Sy Enter
+jump,
+.Sy d
+delete,
+.Sy Esc
+close;
+.Sy b
+back to Chapters;
+.Sy q
+quit.
+.El
+.Sh DISPLAY AND COLOR
+.Nm
+formats HTML-ish chapter content into plain text (converting
+.Pa <p>
+and
+.Pa <br>
+to newlines, stripping other tags, and decoding HTML entities). It also normalizes
+common “smart” punctuation to ASCII for consistent matching.
+.Pp
+Some inline highlighting rules:
+.Bl -bullet -compact
+.It
+Double-quoted spans are highlighted (e.g., dialogue).
+.It
+Whole-line single-quoted text is highlighted differently (e.g., epigraphs).
+.It
+Bracketed attributes like
+.Sq [note]
+are highlighted.
+.It
+Lines starting with
+.Sq ...
+or an ellipsis are emphasized; lines of
+.Sq ***
+are dimmed.
+.It
+Configured literal highlight groups from
+.Pa config.toml
+are applied outside dialogue and bracketed spans. Groups can be global or scoped
+to a novel profile by id or title substring.
+.It
+Suspiciously mismatched quotes are shown with a warning color.
+.El
+.Pp
+Colorization is always on in the current implementation.
+.Pp
+The reading footer reports the currently visible rendered line range, for example
+.Dq lines 27-70/70 ,
+so the bottom of a chapter shows the whole visible page instead of only the first
+line at the top of the viewport.
+.Sh FILES
+.Bl -tag -width 24n
+.It Pa ../db/novel.db
+SqLite database file searched relative to the program's working directory.
+Contains tables
+.Dq novels
+and
+.Dq chapters
+(with a
+.Dq reading_now
+field). When you open or advance a chapter, the app sets the current chapter's
+.Em reading_now
+to 1 for that novel and clears it for others.
+.It Pa reading-progress.json
+Local progress file stored under the platform data directory by default, or at
+.Ev READERTUI_PROGRESS_FILE
+when set. It stores per-novel chapter id, scroll position, and bookmarks.
+.It Pa readertui-debug.log
+Optional debug log written only when
+.Sy [debug].enabled
+is true in
+.Pa config.toml
+or
+.Ev READERTUI_DEBUG_LOG
+is set.
+.El
+.Sh EXIT STATUS
+.Ex -std
+.Sh EXAMPLES
+.Dl novel
+Open the TUI, select a novel with
+.Sy Enter ,
+then a chapter with
+.Sy Enter ,
+read with
+.Sy j/k
+or the mousewheel,
+switch chapters with
+.Sy h/l .
+.Pp
+In the Chapters view:
+.Dl /
+Start search mode, type part of a chapter title (case-insensitive),
+then press
+.Sy Enter
+to apply, or
+.Sy Esc
+to cancel.
+.Sh NOTES
+.Bl -bullet -compact
+.It
+The search matches chapter
+.Em id
+(digit substring) or a case-insensitive substring of the chapter title.
+.It
+Scrolling in Reading view moves 3 lines per
+.Sy j
+or
+.Sy k .
+.It
+Numeric prefixes are supported for repeated reader/list motions, such as
+.Sy 12j
+or
+.Sy 3l .
+.El
+.Sh SEE ALSO
+.Xr less 1 ,
+.Xr bat 1 ,
+.Xr sqlite3 1
+.Sh AUTHORS
+Your Name
+.Aq your@email.example
+.Sh BUGS
+Report issues at your project tracker or repository.

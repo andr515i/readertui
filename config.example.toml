@@ -1,0 +1,62 @@
+# Reader TUI configuration
+
+[scroll]
+# Number of lines to move for j/k and arrow-key scrolling inside the reader view.
+line_step = 3
+# Number of lines to move for d/u (half-page) scrolling.
+half_page_step = 22
+# Number of lines/items to move for each mousewheel tick.
+mouse_step = 3
+# Optional page size for Space/PageUp/PageDown. Leave unset to use the visible reader height.
+# page_step = 22
+
+[reader]
+# Persist exact scroll position per novel/chapter in the progress JSON.
+scroll_persist = true
+
+[database]
+# Optional path to the SQLite content database. If unset, readertui uses:
+# 1. READERTUI_DB_FILE
+# 2. an existing ../db/novel.db for legacy local setups
+# 3. a new empty database in the platform app data directory
+# path = "../db/novel.db"
+
+[debug]
+# Write readertui-debug.log only when explicitly enabled. The READERTUI_DEBUG_LOG
+# environment variable also enables logging and overrides this path.
+enabled = false
+log_path = "readertui-debug.log"
+
+[colors]
+# Base color for regular text.
+base_text = "white"
+# Color used for single-quoted dialogue.
+single_quote = "red"
+# Color used for double-quoted dialogue.
+double_quote = "green"
+# Color used for metadata enclosed in square brackets.
+square_brackets = "light_magenta"
+# Color used for ellipsis lines ("...").
+triple_dots = "yellow"
+# Color used when quotes appear mismatched.
+botched_quote = "light_red"
+# Color used for decorative separators (e.g. "**").
+stars = "dark_gray"
+# Deprecated compatibility setting. Custom keyword colors now live in [highlights].
+lore_term = "light_cyan"
+# Deprecated compatibility setting. Custom keyword colors now live in [highlights].
+rank_term = "light_yellow"
+# Deprecated compatibility setting. Custom keyword colors now live in [highlights].
+place_term = "light_blue"
+# Color used for short standalone emphasis lines ending in ellipses.
+emphasis_line = "magenta"
+
+[highlights]
+# User-editable literal keyword highlighting. Terms are matched case-insensitively.
+enabled = true
+
+# Example global group:
+[[highlights.global_groups]]
+name = "Common magic terms"
+color = "#123123"
+terms = ["Mana", "Core"]

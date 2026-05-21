@@ -1,0 +1,23 @@
+/target/
+
+# Local content databases
+*.db
+*.sqlite
+*.sqlite3
+/db/
+
+# Local config and state
+/config.toml
+/reading-progress.json
+*.progress
+
+# Logs
+*.log
+
+# Editor, OS, and scratch files
+/.vscode/
+/.idea/
+/temp
+*.lnk
+Thumbs.db
+.DS_Store
