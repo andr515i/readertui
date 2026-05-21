@@ -1,0 +1,178 @@
+name: readertui release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: readertui-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  BIN_NAME: readertui
+
+jobs:
+  verify-version:
+    name: Verify release version
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Match tag to Cargo.toml version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          version="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' Cargo.toml | head -n 1)"
+
+          if [[ -z "$version" ]]; then
+            echo "Could not read package version from Cargo.toml" >&2
+            exit 1
+          fi
+
+          expected_tag="v${version}"
+          if [[ "$tag" != "$expected_tag" ]]; then
+            echo "Release tag '$tag' does not match Cargo.toml version '$version'." >&2
+            echo "Expected tag: $expected_tag" >&2
+            exit 1
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: verify-version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            archive: zip
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: macos-15
+            target: aarch64-apple-darwin
+            archive: tar.gz
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --target "${{ matrix.target }}"
+          rustup default stable
+          rustc --version
+          cargo --version
+
+      - name: Test
+        shell: bash
+        run: cargo test --locked --target "${{ matrix.target }}"
+
+      - name: Build release binary
+        shell: bash
+        run: cargo build --locked --release --target "${{ matrix.target }}"
+
+      - name: Stage release files
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${{ needs.verify-version.outputs.tag }}"
+          target="${{ matrix.target }}"
+          package_dir="${BIN_NAME}-${tag}-${target}"
+
+          mkdir -p "$package_dir/src/db" "$package_dir/man" dist
+
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            binary="target/${target}/release/${BIN_NAME}.exe"
+          else
+            binary="target/${target}/release/${BIN_NAME}"
+          fi
+
+          cp "$binary" "$package_dir/"
+          cp README.md LICENSE config.example.toml "$package_dir/"
+          cp src/db/schema.sql "$package_dir/src/db/schema.sql"
+          cp man/readertui.1 "$package_dir/man/readertui.1"
+
+          echo "package_dir=$package_dir" >> "$GITHUB_OUTPUT"
+          echo "asset_base=$package_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Create tar archive
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf "dist/${{ steps.package.outputs.asset_base }}.tar.gz" "${{ steps.package.outputs.package_dir }}"
+
+      - name: Create zip archive
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "${{ steps.package.outputs.package_dir }}" `
+            -DestinationPath "dist/${{ steps.package.outputs.asset_base }}.zip" `
+            -Force
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.package.outputs.asset_base }}
+          path: dist/${{ steps.package.outputs.asset_base }}.${{ matrix.archive }}
+          if-no-files-found: error
+          archive: false
+
+  release:
+    name: Publish GitHub release
+    needs:
+      - verify-version
+      - build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: readertui-*
+          merge-multiple: true
+
+      - name: List release artifacts
+        shell: bash
+        run: ls -la dist
+
+      - name: Create or update GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" dist/* --title "$tag" --generate-notes --verify-tag
+          fi
