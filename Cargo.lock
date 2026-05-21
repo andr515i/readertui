@@ -640,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "readertui"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "bitflags",
  "crossterm 0.29.0",
