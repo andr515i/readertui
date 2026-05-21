@@ -158,10 +158,11 @@ jobs:
           path: dist
           pattern: readertui-*
           merge-multiple: true
+          skip-decompress: true
 
       - name: List release artifacts
         shell: bash
-        run: ls -la dist
+        run: find dist -maxdepth 1 -type f -print | sort
 
       - name: Create or update GitHub release
         shell: bash
@@ -171,8 +172,14 @@ jobs:
           set -euo pipefail
 
           tag="${GITHUB_REF_NAME}"
+          mapfile -t assets < <(find dist -maxdepth 1 -type f -print | sort)
+          if [[ "${#assets[@]}" -eq 0 ]]; then
+            echo "No release assets found in dist." >&2
+            exit 1
+          fi
+
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/* --clobber
+            gh release upload "$tag" "${assets[@]}" --clobber
           else
-            gh release create "$tag" dist/* --title "$tag" --generate-notes --verify-tag
+            gh release create "$tag" "${assets[@]}" --title "$tag" --generate-notes --verify-tag
           fi
