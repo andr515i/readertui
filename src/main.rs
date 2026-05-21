@@ -109,10 +109,79 @@ fn delete_last_word(buffer: &mut String) {
     }
 }
 
+fn is_numeric_query(query: &str) -> bool {
+    !query.is_empty() && query.chars().all(|character| character.is_ascii_digit())
+}
+
+fn leading_digits(value: &str) -> Option<&str> {
+    let mut end = 0;
+    for (index, character) in value.char_indices() {
+        if character.is_ascii_digit() {
+            end = index + character.len_utf8();
+        } else {
+            break;
+        }
+    }
+
+    if end == 0 {
+        None
+    } else {
+        Some(&value[..end])
+    }
+}
+
+fn displayed_chapter_number(title: &str) -> Option<&str> {
+    const CHAPTER_PREFIX: &str = "chapter";
+
+    let trimmed = title.trim_start();
+    if let Some(prefix) = trimmed.get(..CHAPTER_PREFIX.len()) {
+        if prefix.eq_ignore_ascii_case(CHAPTER_PREFIX) {
+            let rest = trimmed[CHAPTER_PREFIX.len()..].trim_start();
+            if let Some(number) = leading_digits(rest) {
+                return Some(number);
+            }
+        }
+    }
+
+    leading_digits(trimmed)
+}
+
+fn numeric_chapter_score(title: &str, query: &str) -> Option<(u8, usize, u64)> {
+    let number = displayed_chapter_number(title)?;
+    let parsed = number.parse::<u64>().unwrap_or(u64::MAX);
+
+    if number == query {
+        Some((0, number.len(), parsed))
+    } else if number.starts_with(query) {
+        Some((1, number.len(), parsed))
+    } else if number.contains(query) {
+        Some((2, number.len(), parsed))
+    } else {
+        None
+    }
+}
+
 fn filter_chapters(chapters: &[Chapter], query: &str) -> Vec<Chapter> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return chapters.to_vec();
+    }
+
+    if is_numeric_query(trimmed) {
+        let mut ranked: Vec<((u8, usize, u64, usize), &Chapter)> = chapters
+            .iter()
+            .enumerate()
+            .filter_map(|(index, chapter)| {
+                numeric_chapter_score(chapter.title.as_str(), trimmed)
+                    .map(|(rank, len, number)| ((rank, len, number, index), chapter))
+            })
+            .collect();
+
+        ranked.sort_by(|a, b| a.0.cmp(&b.0));
+        return ranked
+            .into_iter()
+            .map(|(_, chapter)| chapter.clone())
+            .collect();
     }
 
     let matcher = SkimMatcherV2::default();
@@ -1695,10 +1764,14 @@ mod tests {
     }
 
     fn chapter(id: i32, content: &str) -> Chapter {
+        chapter_with_title(id, format!("Chapter {}", id), content)
+    }
+
+    fn chapter_with_title(id: i32, title: impl Into<String>, content: &str) -> Chapter {
         Chapter {
             id,
             reading_now: 0,
-            title: format!("Chapter {}", id),
+            title: title.into(),
             content: content.to_string(),
         }
     }
@@ -1709,6 +1782,109 @@ mod tests {
             color,
             terms: terms.iter().map(|term| term.to_string()).collect(),
         }
+    }
+
+    #[test]
+    fn numeric_search_uses_displayed_numbers_not_database_ids() {
+        let chapters = vec![
+            chapter_with_title(818, "Chapter 35 - A Shadow, a Star and an Oracle", ""),
+            chapter_with_title(1601, "Chapter 818 - Irregulars, Assemble", ""),
+            chapter_with_title(2601, "Chapter 1818 - Moment of Respite", ""),
+            chapter_with_title(3081, "Chapter 2081 - Fragments of War (18)", ""),
+        ];
+
+        let results = filter_chapters(&chapters, "818");
+        let ids: Vec<i32> = results.iter().map(|chapter| chapter.id).collect();
+
+        assert_eq!(ids, vec![1601, 2601]);
+    }
+
+    #[test]
+    fn numeric_search_ranks_exact_visible_number_before_prefix_and_contains_matches() {
+        let chapters = vec![
+            chapter_with_title(1, "Chapter 1292 - History of Time", ""),
+            chapter_with_title(2, "Chapter 292 - Just Cause", ""),
+            chapter_with_title(3, "Chapter 2292 - Name Given", ""),
+            chapter_with_title(4, "Chapter 921 - New Pets", ""),
+        ];
+
+        let results = filter_chapters(&chapters, "292");
+        let ids: Vec<i32> = results.iter().map(|chapter| chapter.id).collect();
+
+        assert_eq!(ids, vec![2, 1, 3]);
+    }
+
+    #[test]
+    fn numeric_search_does_not_stitch_digits_across_repeated_chapter_text() {
+        let chapters = vec![
+            chapter_with_title(2921, "Chapter 921 - New Pets", ""),
+            chapter_with_title(1071, "Chapter 1071 - Familiar Role", ""),
+        ];
+
+        assert!(filter_chapters(&chapters, "2921").is_empty());
+    }
+
+    #[test]
+    fn numeric_search_exact_visible_number_outranks_prefix_and_contains_matches() {
+        let chapters = vec![
+            chapter_with_title(1, "Chapter 2921 - Storm", ""),
+            chapter_with_title(2, "Chapter 29210 - Echo", ""),
+            chapter_with_title(3, "Chapter 12921 - Drift", ""),
+        ];
+
+        let results = filter_chapters(&chapters, "2921");
+        let ids: Vec<i32> = results.iter().map(|chapter| chapter.id).collect();
+
+        assert_eq!(ids, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn numeric_search_ignores_non_leading_title_numbers() {
+        let chapters = vec![chapter_with_title(
+            2081,
+            "Chapter 2081 - Fragments of War (18)",
+            "",
+        )];
+
+        assert!(filter_chapters(&chapters, "18").is_empty());
+    }
+
+    #[test]
+    fn mixed_search_keeps_fuzzy_title_matching() {
+        let chapters = vec![
+            chapter_with_title(2068, "Chapter 2068 - Fragments of War (5)", ""),
+            chapter_with_title(2078, "Chapter 2078 - Fragments of War (15)", ""),
+            chapter_with_title(2088, "Chapter 2088 - Fragments of War (25)", ""),
+            chapter_with_title(292, "Chapter 292 - Just Cause", ""),
+        ];
+
+        let results = filter_chapters(&chapters, "fragment 5");
+        let ids: Vec<i32> = results.iter().map(|chapter| chapter.id).collect();
+
+        assert_eq!(ids, vec![2068, 2078, 2088]);
+    }
+
+    #[test]
+    fn mixed_search_can_still_fuzzily_match_chapter_number_text() {
+        let chapters = vec![
+            chapter_with_title(1601, "Chapter 818 - Irregulars, Assemble", ""),
+            chapter_with_title(2601, "Chapter 1818 - Moment of Respite", ""),
+        ];
+
+        let results = filter_chapters(&chapters, "ch 818");
+        let ids: Vec<i32> = results.iter().map(|chapter| chapter.id).collect();
+
+        assert_eq!(ids, vec![1601, 2601]);
+    }
+
+    #[test]
+    fn numeric_search_without_visible_number_match_returns_no_results() {
+        let chapters = vec![
+            chapter_with_title(921, "Chapter 921 - New Pets", ""),
+            chapter_with_title(1071, "Chapter 1071 - Familiar Role", ""),
+        ];
+
+        assert!(filter_chapters(&chapters, "555").is_empty());
     }
 
     #[test]
